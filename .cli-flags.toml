@@ -1,17 +1,26 @@
 # flags-2-env surface for `flags2env-platform-web`
-[flags.config]
-env = "FLAGS_2_ENV_CONFIG"
-long = "config"
-help = "Path to TOML configuration"
+[identity]
+service = "flags-2-env-web-server"
+type_name = "WebEnv"
 
-[flags.api_base]
-env = "FLAGS_2_ENV_API_BASE"
-long = "api-base"
-help = "API HTTP base URL"
+[env]
+load = false
 
-[flags.json]
-env = "FLAGS_2_ENV_JSON"
-long = "json"
-switch = true
-help = "Emit JSON"
+[flags.bind]
+env = "FLAGS_2_ENV_WEB_BIND"
+type = "string"
+default = "127.0.0.1:8081"
+examples = ["127.0.0.1:8081", "0.0.0.0:8081"]
+help = "HTTP listen address."
 
+[flags.api-http-base]
+env = "FLAGS_2_ENV_API_HTTP_BASE"
+type = "string"
+examples = ["http://127.0.0.1:8080"]
+help = "API HTTP base URL (stateless avenue)."
+
+[flags.database-url]
+env = "FLAGS_2_ENV_DATABASE_URL"
+type = "string"
+examples = ["postgres://app@127.0.0.1:5432/flags2env"]
+help = "Optional read-only Postgres DSN."
