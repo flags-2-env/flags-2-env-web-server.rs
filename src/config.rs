@@ -9,11 +9,13 @@ pub struct WebConfig {
 
 impl WebConfig {
     pub fn from_env() -> Self {
+        let env = crate::env::load().unwrap_or_else(|err| panic!("{err}"));
         Self {
-            bind: std::env::var("FLAGS_2_ENV_WEB_BIND").unwrap_or_else(|_| "127.0.0.1:8081".into()),
-            api_http_base: std::env::var("FLAGS_2_ENV_API_HTTP_BASE").ok(),
-            database_url: std::env::var("FLAGS_2_ENV_DATABASE_URL").ok(),
+            bind: crate::env::get(&env, crate::env::BIND)
+                .unwrap_or("127.0.0.1:8081")
+                .to_owned(),
+            api_http_base: crate::env::get(&env, crate::env::API_HTTP_BASE).map(str::to_owned),
+            database_url: crate::env::get(&env, crate::env::DATABASE_URL).map(str::to_owned),
         }
     }
 }
-
