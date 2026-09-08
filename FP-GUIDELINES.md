@@ -36,10 +36,11 @@ identically on a laptop and on a CI runner.
 
 ## The budget, and why CI is not red today
 
-`tools/fp-conformance/budget.json` records the per-rule counts at the moment this
-check was introduced: **6 findings across 19 files
-and 430 lines**. CI compares against that budget and fails only when a
-rule's count *increases*. The existing backlog blocks nobody; new violations do.
+`tools/fp-conformance/budget.json` records the per-rule counts for the first
+fully integrated `main`: **22 findings across 23 Rust files and 1,212 lines**.
+That baseline includes the recovered lifecycle and four-transport modules. CI
+compares against the budget and fails only when a rule's count *increases*. The
+inherited backlog blocks nobody; new violations do.
 
 The budget is a ratchet. It should only ever move down. When you clear a class of
 violation, re-baseline in the same commit as the fix:
@@ -55,29 +56,37 @@ Raising the budget to turn CI green defeats the whole mechanism. Fix the code.
 
 | rule | count | severity | principle | what it flags |
 |---|---:|---|---|---|
-| `RS001` | 3 | warn | immutable values | mutable local binding (`let mut`) |
-| `RS004` | 2 | warn | illegal states excluded by types | wildcard match arm defeats exhaustiveness |
-| `RS003` | 1 | error | typed errors | panic-based control flow (`unwrap`/`expect`/`panic!`) |
+| `RS001` | 10 | warn | immutable values | mutable local binding (`let mut`) |
+| `RS003` | 6 | error | typed errors | panic-based control flow (`unwrap`/`expect`/`panic!`) |
+| `RS004` | 3 | warn | illegal states excluded by types | wildcard match arm defeats exhaustiveness |
+| `RS005` | 3 | warn | typed errors | untyped/erased error in a signature |
 
 ## How to clear the top offenders
 
 ### `RS001` — mutable local binding (`let mut`)
 
-*immutable values* · 3 occurrences at baseline
+*immutable values* · 10 occurrences at baseline
 
 Rebind with `let`, fold with an iterator, or build the value with `collect()`/`fold()` instead of mutating in place.
 
 ### `RS004` — wildcard match arm defeats exhaustiveness
 
-*illegal states excluded by types* · 2 occurrences at baseline
+*illegal states excluded by types* · 3 occurrences at baseline
 
 Enumerate the remaining variants explicitly so adding a variant becomes a compile error.
 
 ### `RS003` — panic-based control flow (`unwrap`/`expect`/`panic!`)
 
-*typed errors* · 1 occurrence at baseline
+*typed errors* · 6 occurrences at baseline
 
 Return `Result<T, E>` with a domain error enum and propagate with `?`; reserve panics for genuinely unreachable invariants proven by types.
+
+### `RS005` — untyped/erased error in a signature
+
+*typed errors* · 3 occurrences at baseline
+
+Use a repository error enum so callers can exhaustively handle the service's
+known failure modes without string inspection or downcasting.
 
 ## Language-native enforcement
 
