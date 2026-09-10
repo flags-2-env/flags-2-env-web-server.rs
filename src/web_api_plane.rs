@@ -10,8 +10,8 @@
 //!    not the product-web producer path.
 
 use k8s_web_api_data_plane::{
-    DataPlaneCapabilities, DataPlaneError, DirectDatabasePolicy, InteractionMode,
-    JetStreamPolicy, OrgIdentity, StatefulMtlsTcpPolicy, StatelessHttpPolicy,
+    DataPlaneCapabilities, DataPlaneError, DirectDatabasePolicy, InteractionMode, JetStreamPolicy,
+    OrgIdentity, StatefulMtlsTcpPolicy, StatelessHttpPolicy,
 };
 
 pub const GITHUB_ORG: &str = "flags-2-env";
