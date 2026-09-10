@@ -263,65 +263,66 @@ mod tests {
     use crate::lifecycle::LifecycleState;
     use axum::{
         body::Body,
-        http::{header::CACHE_CONTROL, Request, StatusCode},
+        http::{header::CACHE_CONTROL, HeaderValue, Request, StatusCode},
     };
     use tower::ServiceExt;
 
-    async fn response(state: AppState, path: &str) -> Response {
+    async fn response(state: AppState, path: &str) -> Result<Response, String> {
+        let request = Request::builder()
+            .uri(path)
+            .body(Body::empty())
+            .map_err(|error| error.to_string())?;
         router(state)
-            .oneshot(
-                Request::builder()
-                    .uri(path)
-                    .body(Body::empty())
-                    .expect("request"),
-            )
+            .oneshot(request)
             .await
-            .expect("response")
+            .map_err(|error| error.to_string())
     }
 
     #[tokio::test]
-    async fn lifecycle_routes_are_separate_and_fail_closed() {
+    async fn lifecycle_routes_are_separate_and_fail_closed() -> Result<(), String> {
         let lifecycle = LifecycleState::new("test");
         let state = AppState {
             lifecycle: lifecycle.clone(),
         };
         assert_eq!(
-            response(state.clone(), "/healthz").await.status(),
+            response(state.clone(), "/healthz").await?.status(),
             StatusCode::OK
         );
         assert_eq!(
-            response(state.clone(), "/readyz").await.status(),
+            response(state.clone(), "/readyz").await?.status(),
             StatusCode::SERVICE_UNAVAILABLE
         );
         assert_eq!(
-            response(state.clone(), "/startupz").await.status(),
+            response(state.clone(), "/startupz").await?.status(),
             StatusCode::SERVICE_UNAVAILABLE
         );
         lifecycle.mark_started();
         assert_eq!(
-            response(state.clone(), "/readyz").await.status(),
+            response(state.clone(), "/readyz").await?.status(),
             StatusCode::OK
         );
         assert_eq!(
-            response(state.clone(), "/startupz").await.status(),
+            response(state.clone(), "/startupz").await?.status(),
             StatusCode::OK
         );
         lifecycle.begin_drain();
         assert_eq!(
-            response(state, "/readyz").await.status(),
+            response(state, "/readyz").await?.status(),
             StatusCode::SERVICE_UNAVAILABLE
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn operational_responses_are_not_cacheable() {
+    async fn operational_responses_are_not_cacheable() -> Result<(), String> {
         let state = AppState {
             lifecycle: LifecycleState::new("test"),
         };
-        let response = response(state, "/healthz").await;
+        let response = response(state, "/healthz").await?;
         assert_eq!(
             response.headers().get(CACHE_CONTROL),
-            Some(&"no-store".parse().unwrap())
+            Some(&HeaderValue::from_static("no-store"))
         );
+        Ok(())
     }
 }
