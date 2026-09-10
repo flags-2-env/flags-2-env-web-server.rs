@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      GH_READ_TOKEN: ${{ secrets.SHARED_AUTH_READ_TOKEN }}
+      GH_READ_TOKEN: ${{ secrets.FLEET_GITHUB_READ_TOKEN }}
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
       - name: Check out exact pull-request head
@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${GH_READ_TOKEN:-}" ]; then
-            echo "::error::SHARED_AUTH_READ_TOKEN is required to fetch reviewed private Git dependencies"
+            echo "::error::FLEET_GITHUB_READ_TOKEN is required to fetch reviewed private Git dependencies"
             exit 1
           fi
           helper="$RUNNER_TEMP/git-credential-ores"
