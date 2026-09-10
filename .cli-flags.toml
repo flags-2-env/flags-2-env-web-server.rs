@@ -1,13 +1,21 @@
 # flags-2-env surface for `flags2env-platform-web`
-[identity]
-service = "flags-2-env-web-server"
-type_name = "WebEnv"
+[help]
+url = "https://github.com/flags-2-env/flags-2-env-web-server.rs"
+columns = ["options", "env", "type", "default", "description"]
 
 [env]
-load = false
+# Long-running servers never load ambient dotenv files. The database DSN can
+# contain credentials, so it is admitted from the process environment only and
+# deliberately has no [flags.*] owner.
+files = []
+ignore = ["FLAGS_2_ENV_DATABASE_URL"]
+
+[parse]
+allow_unknown = false
 
 [flags.bind]
 env = "FLAGS_2_ENV_WEB_BIND"
+aliases = ["bind"]
 type = "string"
 default = "127.0.0.1:8081"
 examples = ["127.0.0.1:8081", "0.0.0.0:8081"]
@@ -15,12 +23,7 @@ help = "HTTP listen address."
 
 [flags.api-http-base]
 env = "FLAGS_2_ENV_API_HTTP_BASE"
+aliases = ["api-http-base"]
 type = "string"
 examples = ["http://127.0.0.1:8080"]
 help = "API HTTP base URL (stateless avenue)."
-
-[flags.database-url]
-env = "FLAGS_2_ENV_DATABASE_URL"
-type = "string"
-examples = ["postgres://app@127.0.0.1:5432/flags2env"]
-help = "Optional read-only Postgres DSN."
