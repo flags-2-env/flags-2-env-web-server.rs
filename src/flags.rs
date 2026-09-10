@@ -128,10 +128,7 @@ mod tests {
     fn database_url_cannot_be_supplied_on_argv_or_reflected() -> Result<(), String> {
         let marker = "synthetic-secret-never-reflect";
         let error = match resolve_from(
-            &[
-                "server".to_owned(),
-                format!("--database-url={marker}"),
-            ],
+            &["server".to_owned(), format!("--database-url={marker}")],
             std::iter::empty(),
         ) {
             Ok(_) => return Err("database URL was unexpectedly argv-addressable".to_owned()),
