@@ -30,6 +30,12 @@ jobs:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt,clippy
+
+      - name: Check canonical formatting before private dependency access
+        run: cargo +1.90.0 fmt --all -- --check
+
       - name: Configure scoped private Git dependency authentication
         shell: bash
         run: |
@@ -52,14 +58,8 @@ jobs:
           git config --global credential.https://github.com.helper "$helper"
           git config --global credential.useHttpPath true
 
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt,clippy
-
       - name: Resolve the repository's intentionally untracked lockfile
         run: cargo +1.90.0 generate-lockfile
-
-      - name: Check canonical formatting
-        run: cargo +1.90.0 fmt --all -- --check
 
       - name: Check all targets and features
         run: cargo +1.90.0 check --all-targets --all-features --locked
