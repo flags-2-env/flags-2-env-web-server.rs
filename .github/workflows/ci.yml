@@ -15,11 +15,41 @@ jobs:
   validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      GH_READ_TOKEN: ${{ secrets.SHARED_AUTH_READ_TOKEN }}
     steps:
       - name: Check out exact pull-request head
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
+
+      - name: Verify exact pull-request head
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Configure scoped private Git dependency authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_READ_TOKEN:-}" ]; then
+            echo "::error::SHARED_AUTH_READ_TOKEN is required to fetch reviewed private Git dependencies"
+            exit 1
+          fi
+          helper="$RUNNER_TEMP/git-credential-ores"
+          cat > "$helper" <<'SH'
+          #!/usr/bin/env sh
+          case "$1" in
+            get)
+              printf '%s\n' 'username=x-access-token'
+              printf 'password=%s\n' "$GH_READ_TOKEN"
+              ;;
+          esac
+          SH
+          chmod 700 "$helper"
+          git config --global credential.https://github.com.helper "$helper"
+          git config --global credential.useHttpPath true
 
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt,clippy
@@ -41,3 +71,11 @@ jobs:
 
       - name: Build runtime image
         run: docker build --tag flags-2-env-web-server:ci .
+
+      - name: Remove private Git credential helper
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          git config --global --unset-all credential.https://github.com.helper || true
+          git config --global --unset-all credential.useHttpPath || true
+          rm -f "$RUNNER_TEMP/git-credential-ores"
