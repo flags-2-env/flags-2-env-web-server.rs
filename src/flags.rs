@@ -99,47 +99,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unknown_options_fail_closed_without_echoing_values() {
-        let error = resolve_from(
+    fn unknown_options_fail_closed_without_echoing_values() -> Result<(), String> {
+        let error = match resolve_from(
             &[
                 "server".to_owned(),
                 "--definitely-unknown=do-not-echo".to_owned(),
             ],
             std::iter::empty(),
-        )
-        .expect_err("unknown option");
+        ) {
+            Ok(_) => return Err("unknown option was unexpectedly accepted".to_owned()),
+            Err(error) => error,
+        };
         assert!(error.contains("--definitely-unknown"));
         assert!(!error.contains("do-not-echo"));
+        Ok(())
     }
 
     #[test]
-    fn database_url_is_environment_only_and_preserved() {
+    fn database_url_is_environment_only_and_preserved() -> Result<(), String> {
         let marker = "postgres://user:synthetic-secret@127.0.0.1:5432/flags2env";
         let resolved = resolve_from(
             &["server".to_owned()],
             [("FLAGS_2_ENV_DATABASE_URL".to_owned(), marker.to_owned())],
-        )
-        .expect("environment-only database URL should resolve");
+        )?;
 
         assert_eq!(
             resolved.get("FLAGS_2_ENV_DATABASE_URL").map(String::as_str),
             Some(marker)
         );
+        Ok(())
     }
 
     #[test]
-    fn database_url_cannot_be_supplied_on_argv_or_reflected() {
+    fn database_url_cannot_be_supplied_on_argv_or_reflected() -> Result<(), String> {
         let marker = "synthetic-secret-never-reflect";
-        let error = resolve_from(
+        let error = match resolve_from(
             &[
                 "server".to_owned(),
                 format!("--database-url={marker}"),
             ],
             std::iter::empty(),
-        )
-        .expect_err("database URL must not be argv-addressable");
+        ) {
+            Ok(_) => return Err("database URL was unexpectedly argv-addressable".to_owned()),
+            Err(error) => error,
+        };
 
         assert!(error.contains("--database-url"));
         assert!(!error.contains(marker));
+        Ok(())
     }
 }
