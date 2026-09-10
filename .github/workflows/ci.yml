@@ -20,7 +20,7 @@ jobs:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
       - name: Check out exact pull-request head
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
@@ -69,6 +69,40 @@ jobs:
 
       - name: Run tests
         run: cargo +1.90.0 test --all-targets --all-features --locked
+
+      - name: Exercise the real flags-2-env boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker="synthetic-secret-never-reflect"
+
+          set +e
+          rejected="$(
+            cargo +1.90.0 run --quiet --locked -- \
+              --database-url="$marker" 2>&1
+          )"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -F -- "--database-url" <<<"$rejected" >/dev/null
+          if grep -F -- "$marker" <<<"$rejected" >/dev/null; then
+            echo "database credential was reflected in argv diagnostics" >&2
+            exit 1
+          fi
+
+          set +e
+          env_failure="$(
+            FLAGS_2_ENV_DATABASE_URL="$marker" \
+            cargo +1.90.0 run --quiet --locked -- \
+              --bind=not-a-socket 2>&1
+          )"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          if grep -F -- "$marker" <<<"$env_failure" >/dev/null; then
+            echo "environment-only database credential was reflected in diagnostics" >&2
+            exit 1
+          fi
 
       - name: Build runtime image
         run: docker build --tag flags-2-env-web-server:ci .
