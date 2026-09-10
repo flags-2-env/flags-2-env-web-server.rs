@@ -1,14 +1,8 @@
 name: fp-conformance
 
-# Functional-programming conformance ratchet.
-#
-# Deliberately cheap: stdlib Python, no dependency install, no network. It
-# compares current findings against the recorded budget and fails only on
-# regression, so the pre-existing backlog never blocks a pull request while new
-# violations do.
-#
-# Language-native checks (cargo clippy, eslint, dart analyze) are configured in
-# the tree but not run here, to keep Actions minutes low. See FP-GUIDELINES.md.
+# Functional-programming conformance ratchet plus source-only configuration
+# security checks. Deliberately cheap: stdlib Python, no dependency install,
+# no network.
 
 on:
   pull_request:
@@ -17,6 +11,7 @@ on:
       - '**.ts'
       - '**.tsx'
       - '**.dart'
+      - '.cli-flags.toml'
       - 'tools/fp-conformance/**'
       - '.github/workflows/fp-conformance.yml'
   push:
@@ -26,6 +21,9 @@ on:
       - '**.ts'
       - '**.tsx'
       - '**.dart'
+      - '.cli-flags.toml'
+      - 'tools/fp-conformance/**'
+      - '.github/workflows/fp-conformance.yml'
   workflow_dispatch:
 
 permissions:
@@ -51,6 +49,36 @@ jobs:
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Enforce environment-only database credential boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          key = "FLAGS_2_ENV_DATABASE_URL"
+          with Path(".cli-flags.toml").open("rb") as stream:
+              config = tomllib.load(stream)
+
+          ignored = set(config.get("env", {}).get("ignore", []))
+          if key not in ignored:
+              raise SystemExit(f"{key} must remain in [env].ignore")
+
+          for name, spec in config.get("flags", {}).items():
+              if spec.get("env") == key:
+                  raise SystemExit(f"credential {key} must not be owned by [flags.{name}]")
+
+          generated = Path("src/env/generated.rs").read_text()
+          if key in generated:
+              raise SystemExit(f"generated projection must not expose env-only credential {key}")
+
+          manual_env = Path("src/env/env.rs").read_text()
+          canonical = Path("src/flags.rs").read_text()
+          if key not in manual_env or key not in canonical:
+              raise SystemExit(f"{key} must remain explicit in both audited process-env paths")
+          PY
 
       - name: Scan
         run: |
