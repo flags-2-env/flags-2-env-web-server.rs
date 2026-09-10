@@ -65,22 +65,16 @@ fn resolve_from(
     let typed = parser
         .coerce::<serde_json::Map<String, serde_json::Value>, _>(&raw, Some(path))
         .map_err(|error| format!("flags-2-env typed configuration failed: {error}"))?;
-    let mut resolved = typed
+    let typed_entries = typed
         .into_iter()
         .filter(|(_, value)| !value.is_null())
-        .map(|(name, value)| scalar_string(&name, value).map(|value| (name, value)))
-        .collect::<Result<BTreeMap<_, _>, _>>()?;
+        .map(|(name, value)| scalar_string(&name, value).map(|value| (name, value)));
+    let environment_only = ENV_ONLY_KEYS.iter().filter_map(|name| {
+        raw.get(*name)
+            .map(|value| Ok::<(String, String), String>(((*name).to_owned(), value.clone())))
+    });
 
-    // The native coercion layer intentionally ignores undeclared keys. Preserve
-    // the small audited environment-only allowlist explicitly so credentials can
-    // reach runtime configuration without becoming argv-addressable.
-    for name in ENV_ONLY_KEYS {
-        if let Some(value) = raw.get(*name) {
-            resolved.insert((*name).to_owned(), value.clone());
-        }
-    }
-
-    Ok(resolved)
+    typed_entries.chain(environment_only).collect()
 }
 
 fn scalar_string(name: &str, value: serde_json::Value) -> Result<String, String> {
