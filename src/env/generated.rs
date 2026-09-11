@@ -5,7 +5,6 @@ pub const SERVICE: &str = "flags-2-env-web-server";
 pub const API_HTTP_BASE: &str = "FLAGS_2_ENV_API_HTTP_BASE";
 pub const BIND: &str = "FLAGS_2_ENV_WEB_BIND";
 pub const BIND_DEFAULT: &str = "127.0.0.1:8081";
-pub const DATABASE_URL: &str = "FLAGS_2_ENV_DATABASE_URL";
 
 /// Compile-time env key names from `.cli-flags.toml`.
 pub struct WebEnv {
@@ -13,15 +12,12 @@ pub struct WebEnv {
     pub api_http_base: &'static str,
     /// HTTP listen address.
     pub bind: &'static str,
-    /// Optional read-only Postgres DSN.
-    pub database_url: &'static str,
 }
 
 impl WebEnv {
     pub const KEYS: Self = Self {
         api_http_base: API_HTTP_BASE,
         bind: BIND,
-        database_url: DATABASE_URL,
     };
 }
 
@@ -32,7 +28,6 @@ impl WebEnv {
 pub struct WebEnvValues {
     pub api_http_base: Option<String>,
     pub bind: String,
-    pub database_url: Option<String>,
 }
 
 /// Pure: resolve values from an explicit lookup.
@@ -42,7 +37,6 @@ pub fn load_from(lookup: impl Fn(&str) -> Option<String>) -> WebEnvValues {
         bind: lookup("FLAGS_2_ENV_WEB_BIND")
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "127.0.0.1:8081".to_string()),
-        database_url: lookup("FLAGS_2_ENV_DATABASE_URL").filter(|value| !value.is_empty()),
     }
 }
 
@@ -223,17 +217,6 @@ pub fn load_env_map(
     );
     if let Some(value) = bind {
         out.insert("FLAGS_2_ENV_WEB_BIND".to_string(), value);
-    }
-    let database_url = pick(
-        &["FLAGS_2_ENV_DATABASE_URL"],
-        &["flags", "env_shell", "env_file"],
-        shell,
-        dotenv,
-        flags,
-        None,
-    );
-    if let Some(value) = database_url {
-        out.insert("FLAGS_2_ENV_DATABASE_URL".to_string(), value);
     }
     Ok(out)
 }

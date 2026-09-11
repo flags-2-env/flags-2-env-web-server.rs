@@ -10,40 +10,45 @@
 //!    not the product-web producer path.
 
 use k8s_web_api_data_plane::{
-    DataPlaneCapabilities, DirectDatabasePolicy, InteractionMode, JetStreamPolicy, OrgIdentity,
-    StatefulMtlsTcpPolicy, StatelessHttpPolicy,
+    DataPlaneCapabilities, DataPlaneError, DirectDatabasePolicy, InteractionMode, JetStreamPolicy,
+    OrgIdentity, StatefulMtlsTcpPolicy, StatelessHttpPolicy,
 };
 
 pub const GITHUB_ORG: &str = "flags-2-env";
 pub const ORG_SLUG: &str = "flags-2-env";
 pub const DNS_ZONE: &str = "flags-2-env.dev";
 
-pub fn identity() -> OrgIdentity {
-    OrgIdentity::new(GITHUB_ORG, ORG_SLUG, DNS_ZONE).expect("catalog identity is valid")
-}
-
-pub fn capabilities() -> DataPlaneCapabilities {
-    DataPlaneCapabilities::for_identity(&identity())
-}
-
-pub fn policies() -> (
+type Policies = (
     DirectDatabasePolicy,
     StatelessHttpPolicy,
     StatefulMtlsTcpPolicy,
     JetStreamPolicy,
-) {
-    let identity = identity();
+);
+
+pub fn identity() -> Result<OrgIdentity, DataPlaneError> {
+    OrgIdentity::new(GITHUB_ORG, ORG_SLUG, DNS_ZONE)
+}
+
+pub fn capabilities() -> Result<DataPlaneCapabilities, DataPlaneError> {
+    identity().map(|identity| DataPlaneCapabilities::for_identity(&identity))
+}
+
+fn policies_for(identity: &OrgIdentity) -> Policies {
     (
-        DirectDatabasePolicy::for_identity(&identity),
-        StatelessHttpPolicy::for_identity(&identity),
-        StatefulMtlsTcpPolicy::for_identity(&identity, 7443),
-        JetStreamPolicy::for_identity(&identity),
+        DirectDatabasePolicy::for_identity(identity),
+        StatelessHttpPolicy::for_identity(identity),
+        StatefulMtlsTcpPolicy::for_identity(identity, 7443),
+        JetStreamPolicy::for_identity(identity),
     )
 }
 
-pub fn validate_four_avenues() -> Result<(), k8s_web_api_data_plane::DataPlaneError> {
-    let identity = identity();
-    let (db, http, tcp, nats) = policies();
+pub fn policies() -> Result<Policies, DataPlaneError> {
+    identity().map(|identity| policies_for(&identity))
+}
+
+pub fn validate_four_avenues() -> Result<(), DataPlaneError> {
+    let identity = identity()?;
+    let (db, http, tcp, nats) = policies_for(&identity);
     db.validate(&identity)?;
     http.validate()?;
     tcp.validate()?;
@@ -57,9 +62,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn four_avenues_are_named_and_fail_closed() {
-        validate_four_avenues().expect("four-avenue policies");
-        let caps = capabilities();
+    fn four_avenues_are_named_and_fail_closed() -> Result<(), DataPlaneError> {
+        validate_four_avenues()?;
+        let caps = capabilities()?;
         assert_eq!(caps.app_host, format!("app.{DNS_ZONE}"));
         assert_eq!(caps.api_host, format!("api.{DNS_ZONE}"));
         assert_eq!(
@@ -70,5 +75,6 @@ mod tests {
             caps.nats_url_in_cluster,
             "nats://dd-nats.messaging.svc.cluster.local:4222"
         );
+        Ok(())
     }
 }

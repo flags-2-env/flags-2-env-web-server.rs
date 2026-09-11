@@ -2,7 +2,9 @@
 
 use super::generated;
 
-/// Code-level defaults. Overlay values from flags-2-env (`.env` vs process env vs argv) win.
+pub const DATABASE_URL: &str = "FLAGS_2_ENV_DATABASE_URL";
+
+/// Code-level defaults. Generated flags-2-env values override these defaults.
 pub fn defaults() -> std::collections::BTreeMap<String, String> {
     std::collections::BTreeMap::from([(
         "FLAGS_2_ENV_WEB_BIND".to_string(),
@@ -10,13 +12,18 @@ pub fn defaults() -> std::collections::BTreeMap<String, String> {
     )])
 }
 
-/// Merge service defaults under the flags-2-env overlay.
-/// Default rank: argv `flags` > `env_shell` > `env_file` (`.env`).
-/// `dotenv_override` / `[env] override` lifts `.env` over the process environment.
-/// Servers should set `[env] load = false` so a hostile CWD `.env` cannot inject values.
+/// Merge service defaults under the generated flags-2-env projection, then add
+/// the database DSN from the process environment only. `.cli-flags.toml` uses
+/// `files = []`, so long-running server configuration never depends on dotenv.
 pub fn load() -> Result<std::collections::BTreeMap<String, String>, generated::MissingEnv> {
     let mut merged = defaults();
     merged.extend(generated::load_env_map_from_os()?);
+    if let Ok(database_url) = std::env::var(DATABASE_URL) {
+        let database_url = database_url.trim();
+        if !database_url.is_empty() {
+            merged.insert(DATABASE_URL.to_owned(), database_url.to_owned());
+        }
+    }
     Ok(merged)
 }
 

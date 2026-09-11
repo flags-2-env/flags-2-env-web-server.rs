@@ -7,6 +7,7 @@ use flags2env::BundledFlags2Env;
 use tempfile::NamedTempFile;
 
 const CONTRACT: &str = include_str!("../.cli-flags.toml");
+const ENV_ONLY_KEYS: &[&str] = &["FLAGS_2_ENV_DATABASE_URL"];
 
 pub fn resolve() -> Result<BTreeMap<String, String>, String> {
     resolve_from(&std::env::args().collect::<Vec<_>>(), std::env::vars())
@@ -55,18 +56,25 @@ fn resolve_from(
         ));
     }
 
+    let environment = environment.into_iter().collect::<BTreeMap<_, _>>();
     let mut raw = parsed.dotenv;
     raw.extend(environment);
     raw.extend(parsed.dotenv_overrides);
     raw.extend(parsed.provided_flags);
+
     let typed = parser
         .coerce::<serde_json::Map<String, serde_json::Value>, _>(&raw, Some(path))
         .map_err(|error| format!("flags-2-env typed configuration failed: {error}"))?;
-    typed
+    let typed_entries = typed
         .into_iter()
         .filter(|(_, value)| !value.is_null())
-        .map(|(name, value)| scalar_string(&name, value).map(|value| (name, value)))
-        .collect()
+        .map(|(name, value)| scalar_string(&name, value).map(|value| (name, value)));
+    let environment_only = ENV_ONLY_KEYS.iter().filter_map(|name| {
+        raw.get(*name)
+            .map(|value| Ok::<(String, String), String>(((*name).to_owned(), value.clone())))
+    });
+
+    typed_entries.chain(environment_only).collect()
 }
 
 fn scalar_string(name: &str, value: serde_json::Value) -> Result<String, String> {
@@ -85,16 +93,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unknown_options_fail_closed_without_echoing_values() {
-        let error = resolve_from(
+    fn unknown_options_fail_closed_without_echoing_values() -> Result<(), String> {
+        let error = match resolve_from(
             &[
                 "server".to_owned(),
                 "--definitely-unknown=do-not-echo".to_owned(),
             ],
             std::iter::empty(),
-        )
-        .expect_err("unknown option");
+        ) {
+            Ok(_) => return Err("unknown option was unexpectedly accepted".to_owned()),
+            Err(error) => error,
+        };
         assert!(error.contains("--definitely-unknown"));
         assert!(!error.contains("do-not-echo"));
+        Ok(())
+    }
+
+    #[test]
+    fn database_url_is_environment_only_and_preserved() -> Result<(), String> {
+        let marker = "postgres://user:synthetic-secret@127.0.0.1:5432/flags2env";
+        let resolved = resolve_from(
+            &["server".to_owned()],
+            [("FLAGS_2_ENV_DATABASE_URL".to_owned(), marker.to_owned())],
+        )?;
+
+        assert_eq!(
+            resolved.get("FLAGS_2_ENV_DATABASE_URL").map(String::as_str),
+            Some(marker)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn database_url_cannot_be_supplied_on_argv_or_reflected() -> Result<(), String> {
+        let marker = "synthetic-secret-never-reflect";
+        let error = match resolve_from(
+            &["server".to_owned(), format!("--database-url={marker}")],
+            std::iter::empty(),
+        ) {
+            Ok(_) => return Err("database URL was unexpectedly argv-addressable".to_owned()),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("--database-url"));
+        assert!(!error.contains(marker));
+        Ok(())
     }
 }

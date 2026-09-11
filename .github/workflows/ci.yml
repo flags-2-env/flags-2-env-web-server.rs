@@ -15,20 +15,51 @@ jobs:
   validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      GH_READ_TOKEN: ${{ secrets.FLEET_GITHUB_READ_TOKEN }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
       - name: Check out exact pull-request head
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
+
+      - name: Verify exact pull-request head
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt,clippy
 
+      - name: Check canonical formatting before private dependency access
+        run: cargo +1.90.0 fmt --all -- --check
+
+      - name: Configure scoped private Git dependency authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_READ_TOKEN:-}" ]; then
+            echo "::error::FLEET_GITHUB_READ_TOKEN is required to fetch reviewed private Git dependencies"
+            exit 1
+          fi
+          helper="$RUNNER_TEMP/git-credential-ores"
+          cat > "$helper" <<'SH'
+          #!/usr/bin/env sh
+          case "$1" in
+            get)
+              printf '%s\n' 'username=x-access-token'
+              printf 'password=%s\n' "$GH_READ_TOKEN"
+              ;;
+          esac
+          SH
+          chmod 700 "$helper"
+          git config --global credential.https://github.com.helper "$helper"
+          git config --global credential.useHttpPath true
+
       - name: Resolve the repository's intentionally untracked lockfile
         run: cargo +1.90.0 generate-lockfile
-
-      - name: Check canonical formatting
-        run: cargo +1.90.0 fmt --all -- --check
 
       - name: Check all targets and features
         run: cargo +1.90.0 check --all-targets --all-features --locked
@@ -39,5 +70,47 @@ jobs:
       - name: Run tests
         run: cargo +1.90.0 test --all-targets --all-features --locked
 
+      - name: Exercise the real flags-2-env boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker="synthetic-secret-never-reflect"
+
+          set +e
+          rejected="$(
+            cargo +1.90.0 run --quiet --locked -- \
+              --database-url="$marker" 2>&1
+          )"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -F -- "--database-url" <<<"$rejected" >/dev/null
+          if grep -F -- "$marker" <<<"$rejected" >/dev/null; then
+            echo "database credential was reflected in argv diagnostics" >&2
+            exit 1
+          fi
+
+          set +e
+          env_failure="$(
+            FLAGS_2_ENV_DATABASE_URL="$marker" \
+            cargo +1.90.0 run --quiet --locked -- \
+              --bind=not-a-socket 2>&1
+          )"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          if grep -F -- "$marker" <<<"$env_failure" >/dev/null; then
+            echo "environment-only database credential was reflected in diagnostics" >&2
+            exit 1
+          fi
+
       - name: Build runtime image
         run: docker build --tag flags-2-env-web-server:ci .
+
+      - name: Remove private Git credential helper
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          git config --global --unset-all credential.https://github.com.helper || true
+          git config --global --unset-all credential.useHttpPath || true
+          rm -f "$RUNNER_TEMP/git-credential-ores"
